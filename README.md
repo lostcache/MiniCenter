@@ -1,82 +1,85 @@
-# Fat Tree Topology for Mininet
+# Trans-Balancer
 
-This project implements a configurable Fat Tree topology using Mininet. Fat Tree topologies are commonly used in data center networks to provide high bandwidth, fault tolerance, and improved load balancing through multiple paths between hosts.
-
-## What is a Fat Tree Topology?
-
-A Fat Tree is a specialized multi-rooted tree network topology. Unlike regular tree topologies where bandwidth is reduced as you move up the hierarchy, Fat Trees maintain consistent bandwidth throughout the network. The key characteristics are:
-
-- Non-blocking: Full bandwidth available between any pair of hosts
-- Multiple paths: Provides redundancy and load balancing capabilities
-- Scalable: Can be easily expanded to accommodate more hosts
-
-In a k-ary Fat Tree:
-
-- There are k pods
-- Each pod contains k/2 edge switches and k/2 aggregation switches
-- There are (k/2)² core switches
-- Each edge switch connects to k/2 hosts and k/2 aggregation switches
-- Each aggregation switch connects to k/2 edge switches
-- Total hosts: k³/4
+A configurable Fat Tree topology implementation with SDN controller for Mininet.
 
 ## Requirements
 
-- Python 2.7+ or Python 3
+- Python 3.9.18
 - Mininet (http://mininet.org/download/)
 - Open vSwitch
-- (Optional) An SDN controller like Ryu, ONOS, or OpenDaylight
+- Ryu (for the controller)
 
 ## Installation
 
 ```
-git clone https://github.com/yourusername/trans_balancer.git
+git clone https://github.com/lostcache/trans_balancer.git
 cd trans_balancer
+pyenv local 3.9.18
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-Run the fat tree topology with the default configuration (4 pods):
+### Start the Controller
+
+Start the Ryu controller:
+
+```
+ryu-manager simple_controller.py
+```
+
+### Run the Fat Tree Topology
+
+Run with default configuration (4 pods):
 
 ```
 sudo python fat_tree.py
 ```
 
-To specify a different number of pods (k must be an even number):
+Specify a different number of pods (must be an even number):
 
 ```
 sudo python fat_tree.py 6
 ```
 
-## Network Details
+### Run in one command
 
-For a Fat Tree with k=4:
+```
+ryu-manager simple_controller.py & python fat_tree.py
+```
 
-- 4 core switches
-- 8 aggregation switches (2 per pod)
-- 8 edge switches (2 per pod)
-- 16 hosts (2 hosts per edge switch)
+### Check the fat-tree network in miniet cli
 
-## Using with Controllers
+```
+mininet> pingall
+```
 
-By default, the implementation uses a RemoteController listening on 127.0.0.1:6653. To use a different controller:
+- Note: it might take multiple tries for pingall to reach 100% connectivity since STP might still be converging in the background.
 
-1. Start your controller (e.g., `ryu-manager simple_switch.py`)
-2. Modify the controller IP/port in `fat_tree.py` if necessary
-3. Run the Fat Tree topology
+### clean exit
 
-## Customization
+```
+mininet> exit
+```
 
-You can modify the `FatTreeTopo` class to change various aspects of the topology:
+### Controller Details
 
-- Switch naming scheme
-- Link properties (bandwidth, delay)
-- Host configuration
+The included `simple_controller.py` implements:
+
+- Basic learning switch functionality
+- MAC address learning
+- Flow installation with timeouts
+- Packet handling for standard Ethernet frames
 
 ## Troubleshooting
 
-- Ensure you're running the script with sudo privileges
-- Verify that Mininet is properly installed
-- If using a controller, make sure it's running before starting the topology
+- Run all commands with sudo privileges
+- Ensure Mininet and Open vSwitch are properly installed
+- Start the controller before running the topology
+- If connectivity issues occur, wait 10-20 seconds for STP to converge
+- Default controller connection is 127.0.0.1:6633
 
 ## License
 
