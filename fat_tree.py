@@ -1,14 +1,14 @@
 """
-fat_tree.py: Implementation of a fat-tree topology for Mininet
+Fat Tree topology with Spanning Tree Protocol (STP) for Mininet
 
-A Fat-Tree topology uses a specialized multi-rooted tree hierarchy designed
-for data centers, with multiple paths between hosts for improved fault tolerance
-and load balancing capabilities.
+This script implements a fat tree topology with STP enabled to ensure basic connectivity
+between all hosts. STP eliminates loops while maintaining a path between all nodes.
 
 Usage:
-  sudo python fat_tree.py [k]
+  sudo python fat_tree_stp.py [k]
 
-where k is the number of pods (default 4)
+where:
+  k is the number of pods (default 4)
 """
 
 from mininet.topo import Topo
@@ -17,11 +17,14 @@ from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 from mininet.node import OVSKernelSwitch, RemoteController
 from mininet.link import TCLink
+from mininet.clean import cleanup
+import sys
+import time
 
 
-class FatTreeTopo(Topo):
+class FatTreeTopoSTP(Topo):
     """
-    Fat Tree topology with k pods
+    Fat Tree topology with k pods and STP enabled
 
     A Fat Tree with k pods has:
     - (k/2)^2 core switches
@@ -39,7 +42,10 @@ class FatTreeTopo(Topo):
         core_switch_cnt = (self.pod_count // 2) ** 2
         core_switches = []
         for i in range(core_switch_cnt):
-            sw = self.addSwitch(f"c{i}")
+            # Use faster STP convergence parameters
+            sw = self.addSwitch(
+                f"c{i}", stp=True, protocols="OpenFlow13", failMode="standalone"
+            )
             core_switches.append(sw)
 
         return core_switches
@@ -48,7 +54,13 @@ class FatTreeTopo(Topo):
         aggr_switch_index = pod_index * aggr_switch_per_pod
         aggr_switches = []
         for i in range(aggr_switch_per_pod):
-            sw = self.addSwitch(f"a{aggr_switch_index + i}")
+            # Use faster STP convergence parameters
+            sw = self.addSwitch(
+                f"a{aggr_switch_index + i}",
+                stp=True,
+                protocols="OpenFlow13",
+                failMode="standalone",
+            )
             aggr_switches.append(sw)
 
         return aggr_switches
@@ -57,7 +69,13 @@ class FatTreeTopo(Topo):
         edge_switch_start_index = pod_index * edge_switch_per_pod
         edge_switches = []
         for i in range(self.pod_count // 2):
-            sw = self.addSwitch(f"e{edge_switch_start_index + i}")
+            # Use faster STP convergence parameters
+            sw = self.addSwitch(
+                f"e{edge_switch_start_index + i}",
+                stp=True,
+                protocols="OpenFlow13",
+                failMode="standalone",
+            )
             edge_switches.append(sw)
 
         return edge_switches
@@ -91,11 +109,12 @@ class FatTreeTopo(Topo):
             for j in range(self.pod_count // 2):
                 # Calculate index of core switch to connect to
                 core_index = i * (self.pod_count // 2) + j
-                print("Linking aggr_switch: ", i, " to core: ", core_index)
+                info(f"Will link aggr_switch: {i} to core_switch: {core_index}\n")
                 self.addLink(agg_sw, core_switches[core_index])
 
-    def _init_pods(self, core_switches):
+    def _init_pods_and_hosts(self, core_switches):
         for pod_index in range(self.pod_count):
+            info(f"Initializing pod: {pod_index}\n")
             # init aggregation switches for the current pod
             aggr_switches_per_pod = self.pod_count // 2
             aggr_switches = self._init_aggr_switches(pod_index, aggr_switches_per_pod)
@@ -125,28 +144,58 @@ class FatTreeTopo(Topo):
             raise Exception("pod count must be an even number")
 
         core_switches = self._init_core_switches()
+        self._init_pods_and_hosts(core_switches)
 
-        self._init_pods(core_switches)
 
+def run_fat_tree_stp(k=4):
+    """
+    Run a fat tree topology with STP enabled
+    """
+    info("*** Cleaning up any existing Mininet resources\n")
+    cleanup()
 
-def run_fat_tree(k=4):
-    """Create and run a fat tree network with k pods"""
-    topo = FatTreeTopo(pod_count=k)
-    net = Mininet(topo=topo, switch=OVSKernelSwitch, controller=None, link=TCLink)
+    topo = FatTreeTopoSTP(pod_count=k)
 
-    # Add controller
-    net.addController("c0", controller=RemoteController, ip="127.0.0.1", port=6653)
+    remoteController = RemoteController("c0", ip="127.0.0.1", port=6633)
 
+    net = Mininet(
+        topo=topo,
+        switch=OVSKernelSwitch,
+        controller=remoteController,
+        link=TCLink,
+        waitConnected=False,
+    )
+
+    info("*** Starting network (this may take a moment)...\n")
     net.start()
-    info("*** Network started\n")
-    info('*** Type "exit" or press Ctrl+D to exit\n')
+
+    info("*** Configuring STP on switches...\n")
+    for switch in net.switches:
+        # Set fast spanning tree timeouts (in seconds)
+        switch.cmd("ovs-vsctl set bridge", switch, "other_config:stp-forward-delay=4")
+        switch.cmd("ovs-vsctl set bridge", switch, "other_config:stp-hello-time=1")
+        switch.cmd("ovs-vsctl set bridge", switch, "other_config:stp-max-age=6")
+
+    info("*** Waiting for STP to converge (10 seconds)...\n")
+    time.sleep(10)
+
+    # Verify STP status on switches (just sample a few to avoid too much output)
+    info("*** STP Status (sample):\n")
+    # Just check a few switches
+    for switch in net.switches[:3]:
+        info(f"STP state for {switch.name}:\n")
+        result = switch.cmd("ovs-vsctl list bridge", switch.name, "| grep stp")
+        info(result + "\n")
+
+    info("\n*** Network is ready (STP may still be converging in background)\n")
+    info("*** If 'pingall' fails, wait 10-20 seconds and try again\n")
+
     CLI(net)
+
     net.stop()
 
 
 if __name__ == "__main__":
-    import sys
-
     setLogLevel("info")
 
     k = 4
@@ -160,4 +209,4 @@ if __name__ == "__main__":
             print(f"Error: Invalid value for k: {sys.argv[1]}")
             sys.exit(1)
 
-    run_fat_tree(k)
+    run_fat_tree_stp(k)

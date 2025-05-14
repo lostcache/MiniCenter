@@ -11,10 +11,12 @@ A Fat Tree is a specialized multi-rooted tree network topology. Unlike regular t
 - Scalable: Can be easily expanded to accommodate more hosts
 
 In a k-ary Fat Tree:
+
 - There are k pods
 - Each pod contains k/2 edge switches and k/2 aggregation switches
 - There are (k/2)² core switches
-- Each edge switch connects to k/2 hosts
+- Each edge switch connects to k/2 hosts and k/2 aggregation switches
+- Each aggregation switch connects to k/2 edge switches
 - Total hosts: k³/4
 
 ## Requirements
@@ -48,7 +50,8 @@ sudo python fat_tree.py 6
 ## Network Details
 
 For a Fat Tree with k=4:
-- 4 core switches 
+
+- 4 core switches
 - 8 aggregation switches (2 per pod)
 - 8 edge switches (2 per pod)
 - 16 hosts (2 hosts per edge switch)
@@ -64,6 +67,7 @@ By default, the implementation uses a RemoteController listening on 127.0.0.1:66
 ## Customization
 
 You can modify the `FatTreeTopo` class to change various aspects of the topology:
+
 - Switch naming scheme
 - Link properties (bandwidth, delay)
 - Host configuration
