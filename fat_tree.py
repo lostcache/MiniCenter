@@ -26,7 +26,7 @@ class FatTreeTopoSTP(Topo):
     """
     Fat Tree topology with k pods and STP enabled
 
-    A Fat Tree with k pods has:
+    A Fat Tree with k pods has (k = pod_count):
     - (k/2)^2 core switches
     - k*k/2 aggregation switches
     - k*k/2 edge switches
@@ -35,7 +35,7 @@ class FatTreeTopoSTP(Topo):
 
     def __init__(self, pod_count=4):
         self.pod_count = pod_count
-        super().__init__()
+        super().__init__(pod_count=4)
 
     def _init_core_switches(self):
         # Core switches (pod_count/2)^2
@@ -139,11 +139,13 @@ class FatTreeTopoSTP(Topo):
             # Connect aggregation switches in current pod to core switches
             self._connect_aggr_to_core(core_switches, aggr_switches)
 
-    def build(self, pod=4):
-        if pod % 2 != 0:
+    def build(self, pod_count):
+        print("podd_countt: ", pod_count)
+        if pod_count % 2 != 0:
             raise Exception("pod count must be an even number")
 
         core_switches = self._init_core_switches()
+
         self._init_pods_and_hosts(core_switches)
 
 
@@ -179,7 +181,8 @@ def run_fat_tree_stp(k=4):
     info("*** Waiting for STP to converge (10 seconds)...\n")
     time.sleep(10)
 
-    # Verify STP status on switches (just sample a few to avoid too much output)
+    # Verify STP status on switches (just sample a few to avoid too much
+    # output)
     info("*** STP Status (sample):\n")
     # Just check a few switches
     for switch in net.switches[:3]:
