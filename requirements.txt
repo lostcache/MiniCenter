@@ -3,8 +3,8 @@ certifi==2025.4.26
 charset-normalizer==3.4.2
 click==8.1.8
 debtcollector==3.0.0
-dnspython==2.7.0
-eventlet==0.39.1
+dnspython==1.16.0
+eventlet==0.30.2
 greenlet==3.2.1
 idna==3.10
 mininet==2.3.0.dev6
