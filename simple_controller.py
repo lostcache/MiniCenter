@@ -12,11 +12,11 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """
 An OpenFlow 1.0 L2 learning switch implementation.
 """
 
+from typing import Dict, List, Any
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -32,11 +32,13 @@ from ryu.lib.packet import ether_types
 class SimpleSwitch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super(SimpleSwitch, self).__init__(*args, **kwargs)
-        self.mac_to_port = {}
+        self.mac_to_port: Dict[int, Dict[str, int]] = {}
 
-    def add_flow(self, datapath, in_port, dst, src, actions):
+    def add_flow(
+        self, datapath: Any, in_port: int, dst: str, src: str, actions: List[Any]
+    ) -> None:
         ofproto = datapath.ofproto
 
         match = datapath.ofproto_parser.OFPMatch(
@@ -57,54 +59,52 @@ class SimpleSwitch(app_manager.RyuApp):
         datapath.send_msg(mod)
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def _packet_in_handler(self, ev):
-        msg = ev.msg
-        datapath = msg.datapath
-        ofproto = datapath.ofproto
-
-        pkt = packet.Packet(msg.data)
+    def _packet_in_handler(self, ev: ofp_event.EventOFPPacketIn) -> None:
+        pkt = packet.Packet(ev.msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
             return
+
         dst = eth.dst
         src = eth.src
 
-        dpid = datapath.id
+        dpid = ev.msg.datapath.id
         self.mac_to_port.setdefault(dpid, {})
 
-        self.logger.info("packet in %s %s %s %s", dpid, src, dst, msg.in_port)
+        self.logger.info("packet in %s %s %s %s", dpid, src, dst, ev.msg.in_port)
 
         # learn a mac address to avoid FLOOD next time.
-        self.mac_to_port[dpid][src] = msg.in_port
+        self.mac_to_port[dpid][src] = ev.msg.in_port
 
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
         else:
-            out_port = ofproto.OFPP_FLOOD
+            out_port = ev.msg.datapath.ofproto.OFPP_FLOOD
 
-        actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
+        actions = [ev.msg.datapath.ofproto_parser.OFPActionOutput(out_port)]
 
         # install a flow to avoid packet_in next time
-        if out_port != ofproto.OFPP_FLOOD:
-            self.add_flow(datapath, msg.in_port, dst, src, actions)
+        if out_port != ev.msg.datapath.ofproto.OFPP_FLOOD:
+            self.add_flow(ev.msg.datapath, ev.msg.in_port, dst, src, actions)
 
-        data = None
-        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-            data = msg.data
-
-        out = datapath.ofproto_parser.OFPPacketOut(
-            datapath=datapath,
-            buffer_id=msg.buffer_id,
-            in_port=msg.in_port,
+        out = ev.msg.datapath.ofproto_parser.OFPPacketOut(
+            datapath=ev.msg.datapath,
+            buffer_id=ev.msg.buffer_id,
+            in_port=ev.msg.in_port,
             actions=actions,
-            data=data,
+            data=(
+                ev.msg.data
+                if ev.msg.buffer_id == ev.msg.datapath.ofproto.OFP_NO_BUFFER
+                else None
+            ),
         )
-        datapath.send_msg(out)
+
+        ev.msg.datapath.send_msg(out)
 
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
-    def _port_status_handler(self, ev):
+    def _port_status_handler(self, ev: ofp_event.EventOFPPortStatus) -> None:
         msg = ev.msg
         reason = msg.reason
         port_no = msg.desc.port_no

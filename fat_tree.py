@@ -20,9 +20,10 @@ from mininet.link import TCLink
 from mininet.clean import cleanup
 import sys
 import time
+from typing import List
 
 
-class FatTreeTopoSTP(Topo):
+class FatTreeTopo(Topo):
     """
     Fat Tree topology with k pods and STP enabled
 
@@ -33,14 +34,17 @@ class FatTreeTopoSTP(Topo):
     - k^3/4 hosts (k/2 hosts per edge switch)
     """
 
-    def __init__(self, pod_count=4):
+    def __init__(self, pod_count: int = 4) -> None:
         self.pod_count = pod_count
+        self.core_switch_count = (self.pod_count // 2) ** 2
+        self.aggr_switch_count = self.pod_count * (self.pod_count // 2)
+        self.edge_switch_count = self.pod_count * (self.pod_count // 2)
         super().__init__(pod_count=4)
 
-    def _init_core_switches(self):
+    def _init_core_switches(self) -> List[str]:
         # Core switches (pod_count/2)^2
         core_switch_cnt = (self.pod_count // 2) ** 2
-        core_switches = []
+        core_switches: List[str] = []
         for i in range(core_switch_cnt):
             # Use faster STP convergence parameters
             sw = self.addSwitch(
@@ -50,9 +54,11 @@ class FatTreeTopoSTP(Topo):
 
         return core_switches
 
-    def _init_aggr_switches(self, pod_index, aggr_switch_per_pod):
+    def _init_aggr_switches(
+        self, pod_index: int, aggr_switch_per_pod: int
+    ) -> List[str]:
         aggr_switch_index = pod_index * aggr_switch_per_pod
-        aggr_switches = []
+        aggr_switches: List[str] = []
         for i in range(aggr_switch_per_pod):
             # Use faster STP convergence parameters
             sw = self.addSwitch(
@@ -65,9 +71,11 @@ class FatTreeTopoSTP(Topo):
 
         return aggr_switches
 
-    def _init_edge_switches(self, pod_index, edge_switch_per_pod):
+    def _init_edge_switches(
+        self, pod_index: int, edge_switch_per_pod: int
+    ) -> List[str]:
         edge_switch_start_index = pod_index * edge_switch_per_pod
-        edge_switches = []
+        edge_switches: List[str] = []
         for i in range(self.pod_count // 2):
             # Use faster STP convergence parameters
             sw = self.addSwitch(
@@ -80,9 +88,9 @@ class FatTreeTopoSTP(Topo):
 
         return edge_switches
 
-    def _init_hosts(self, pod_index, hosts_per_pod):
+    def _init_hosts(self, pod_index: int, hosts_per_pod: int) -> List[str]:
         host_start_index = pod_index * hosts_per_pod
-        hosts = []
+        hosts: List[str] = []
         for i in range(hosts_per_pod):
             host = self.addHost(f"h{host_start_index + i}")
             hosts.append(host)
@@ -90,20 +98,24 @@ class FatTreeTopoSTP(Topo):
         return hosts
 
     def _connect_hosts_to_edge_switches(
-        self, hosts_per_edge_switch, edge_switches, hosts
-    ):
+        self, hosts_per_edge_switch: int, edge_switches: List[str], hosts: List[str]
+    ) -> None:
         for i, edge_switch in enumerate(edge_switches):
             # Each edge switch connects to k/2 hosts
             for j in range(hosts_per_edge_switch):
                 host_index = i * hosts_per_edge_switch + j
                 self.addLink(hosts[host_index], edge_switch)
 
-    def _connect_aggr_to_edge(self, edge_switches, aggr_switches):
+    def _connect_aggr_to_edge(
+        self, edge_switches: List[str], aggr_switches: List[str]
+    ) -> None:
         for edge_sw in edge_switches:
             for agg_sw in aggr_switches:
                 self.addLink(edge_sw, agg_sw)
 
-    def _connect_aggr_to_core(self, core_switches, aggr_switches):
+    def _connect_aggr_to_core(
+        self, core_switches: List[str], aggr_switches: List[str]
+    ) -> None:
         for i, agg_sw in enumerate(aggr_switches):
             # Each aggregation switch connects to k/2 core switches
             for j in range(self.pod_count // 2):
@@ -112,7 +124,7 @@ class FatTreeTopoSTP(Topo):
                 info(f"Will link aggr_switch: {i} to core_switch: {core_index}\n")
                 self.addLink(agg_sw, core_switches[core_index])
 
-    def _init_pods_and_hosts(self, core_switches):
+    def _init_pods_and_hosts(self, core_switches: List[str]) -> None:
         for pod_index in range(self.pod_count):
             info(f"Initializing pod: {pod_index}\n")
             # init aggregation switches for the current pod
@@ -139,7 +151,7 @@ class FatTreeTopoSTP(Topo):
             # Connect aggregation switches in current pod to core switches
             self._connect_aggr_to_core(core_switches, aggr_switches)
 
-    def build(self, pod_count):
+    def build(self, pod_count: int) -> None:
         print("podd_countt: ", pod_count)
         if pod_count % 2 != 0:
             raise Exception("pod count must be an even number")
@@ -149,14 +161,14 @@ class FatTreeTopoSTP(Topo):
         self._init_pods_and_hosts(core_switches)
 
 
-def run_fat_tree_stp(k=4):
+def run_fat_tree_stp(k: int = 4) -> None:
     """
     Run a fat tree topology with STP enabled
     """
     info("*** Cleaning up any existing Mininet resources\n")
     cleanup()
 
-    topo = FatTreeTopoSTP(pod_count=k)
+    topo = FatTreeTopo(pod_count=k)
 
     remoteController = RemoteController("c0", ip="127.0.0.1", port=6633)
 
@@ -201,7 +213,7 @@ def run_fat_tree_stp(k=4):
 if __name__ == "__main__":
     setLogLevel("info")
 
-    k = 4
+    k: int = 4
     if len(sys.argv) > 1:
         try:
             k = int(sys.argv[1])
