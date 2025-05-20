@@ -12,22 +12,55 @@ from typing import List
 
 class FatTreeTopo(Topo):
     """
-    Fat Tree topology with k pods and STP (Spanning Tree Protocol) enabled.
+    ===================================================================
+                            FAT TREE TOPOLOGY
+    ===================================================================
 
-    Fat Tree is a scalable datacenter network topology introduced by Al-Fares et al. in their
-    seminal SIGCOMM 2008 paper "A Scalable, Commodity Data Center Network Architecture."
-    Unlike traditional tree topologies, Fat Trees provide high bisection bandwidth by
-    using multiple parallel paths between any two hosts, making them particularly suitable
-    for large-scale data centers and cloud computing environments.
+    ** Written by Humman **
+    Key feature of fat tree is that the bandwidth between each level of the tree
+    is same, regardless of the number of devices involved. This opens multiple
+    opportunities for load balancing and fault tolerance.
 
-    The concept originated from Charles E. Leiserson's work in 1985 for hardware-efficient
-    supercomputing networks, but was later adapted for datacenter networks.
+    -------------------------------------------------------------------
+    TOPOLOGY STRUCTURE
+    -------------------------------------------------------------------
 
-    This implementation follows the k-ary Fat Tree design where:
-    - The topology consists of k pods
-    - Each pod contains (k/2) edge switches and (k/2) aggregation switches
-    - There are (k/2*k/2 edge switches
-    - k^3/4 hosts (k/2 hosts per edge switch)
+    For a k-ary Fat Tree:
+
+    Component          | Count                | Description
+    -------------------|----------------------|---------------------------
+    Pods               | k                    | Basic unit of organization
+    Core Switches      | (k/2)²               | Top level switches
+    Aggregation Sw.    | k * (k/2)            | k/2 per pod
+    Edge Switches      | k * (k/2)            | k/2 per pod
+    Hosts              | k³/4                 | k/2 hosts per edge switch
+
+    -------------------------------------------------------------------
+    CONNECTIVITY PATTERN
+    -------------------------------------------------------------------
+
+    • Edge switch:     connects to (k/2) hosts and (k/2) aggregation switches
+                       within its pod
+
+    • Aggregation sw.: connects to (k/2) edge switches within its pod and
+                       (k/2) core switches
+
+    • Core switch:     connects to k aggregation switches (one in each pod)
+
+    -------------------------------------------------------------------
+    REFERENCES
+    -------------------------------------------------------------------
+
+    • Al-Fares, M., Loukissas, A., & Vahdat, A. (2008). A scalable, commodity
+      data center network architecture. In Proceedings of the ACM SIGCOMM 2008
+      Conference on Data Communication (pp. 63-74).
+
+    • Leiserson, C. E. (1985). Fat-trees: Universal networks for hardware-efficient
+      supercomputing. IEEE Transactions on Computers, 100(10), 892-901.
+
+    • Singh, A., et al. (2015). Jupiter Rising: A Decade of Clos Topologies and
+      Centralized Control in Google's Datacenter Network. In Proceedings of the
+      ACM SIGCOMM 2015.
     """
 
     def __init__(self, k: int = 4) -> None:
