@@ -34,16 +34,25 @@ class FatTreeTopo(Topo):
     - k^3/4 hosts (k/2 hosts per edge switch)
     """
 
-    def __init__(self, pod_count: int = 4) -> None:
-        self.pod_count = pod_count
-        self.core_switch_count = (self.pod_count // 2) ** 2
-        self.aggr_switch_count = self.pod_count * (self.pod_count // 2)
-        self.edge_switch_count = self.pod_count * (self.pod_count // 2)
+    def __init__(self, k: int = 4) -> None:
+        self.k = k
         super().__init__(pod_count=4)
+
+    @property
+    def core_switch_count(self) -> int:
+        return self.core_switch_count
+
+    @property
+    def aggr_switch_count(self) -> int:
+        return self.k * (self.k // 2)
+
+    @property
+    def edge_switch_count(self) -> int:
+        return self.k * (self.k // 2)
 
     def _init_core_switches(self) -> List[str]:
         # Core switches (pod_count/2)^2
-        core_switch_cnt = (self.pod_count // 2) ** 2
+        core_switch_cnt = (self.k // 2) ** 2
         core_switches: List[str] = []
         for i in range(core_switch_cnt):
             # Use faster STP convergence parameters
@@ -76,7 +85,7 @@ class FatTreeTopo(Topo):
     ) -> List[str]:
         edge_switch_start_index = pod_index * edge_switch_per_pod
         edge_switches: List[str] = []
-        for i in range(self.pod_count // 2):
+        for i in range(self.k // 2):
             # Use faster STP convergence parameters
             sw = self.addSwitch(
                 f"e{edge_switch_start_index + i}",
@@ -118,25 +127,25 @@ class FatTreeTopo(Topo):
     ) -> None:
         for i, agg_sw in enumerate(aggr_switches):
             # Each aggregation switch connects to k/2 core switches
-            for j in range(self.pod_count // 2):
+            for j in range(self.k // 2):
                 # Calculate index of core switch to connect to
-                core_index = i * (self.pod_count // 2) + j
+                core_index = i * (self.k // 2) + j
                 info(f"Will link aggr_switch: {i} to core_switch: {core_index}\n")
                 self.addLink(agg_sw, core_switches[core_index])
 
     def _init_pods_and_hosts(self, core_switches: List[str]) -> None:
-        for pod_index in range(self.pod_count):
+        for pod_index in range(self.k):
             info(f"Initializing pod: {pod_index}\n")
             # init aggregation switches for the current pod
-            aggr_switches_per_pod = self.pod_count // 2
+            aggr_switches_per_pod = self.k // 2
             aggr_switches = self._init_aggr_switches(pod_index, aggr_switches_per_pod)
 
             # init edge switches for the current pod
-            edge_switches_per_pod = self.pod_count // 2
+            edge_switches_per_pod = self.k // 2
             edge_switches = self._init_edge_switches(pod_index, edge_switches_per_pod)
 
             # init hosts for the current pod
-            hosts_per_edge_switch = self.pod_count // 2
+            hosts_per_edge_switch = self.k // 2
             hosts_per_pod = edge_switches_per_pod * hosts_per_edge_switch
             hosts = self._init_hosts(pod_index, hosts_per_pod)
 
@@ -168,7 +177,7 @@ def run_fat_tree_stp(k: int = 4) -> None:
     info("*** Cleaning up any existing Mininet resources\n")
     cleanup()
 
-    topo = FatTreeTopo(pod_count=k)
+    topo = FatTreeTopo(k=k)
 
     remoteController = RemoteController("c0", ip="127.0.0.1", port=6633)
 
