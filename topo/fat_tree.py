@@ -1,13 +1,9 @@
 from mininet.topo import Topo
-from mininet.net import Mininet
-from mininet.log import setLogLevel, info
-from mininet.cli import CLI
-from mininet.node import OVSKernelSwitch, RemoteController
-from mininet.link import TCLink
-from mininet.clean import cleanup
-import sys
-import time
+from connection import ConnectionDist
 from typing import List
+from utils import rand_dist_arr, uniform_dist_arr
+from mininet.log import info
+import os
 
 
 class FatTreeTopo(Topo):
@@ -65,29 +61,18 @@ class FatTreeTopo(Topo):
 
     def __init__(self, k: int = 4) -> None:
         self.k = k
+        self.core_switches = []
         super().__init__(k=4)
-
-    @property
-    def radix(self):
-        return self.k
-
-    @property
-    def core_switch_count(self) -> int:
-        return self.core_switch_count
-
-    @property
-    def aggr_switch_count(self) -> int:
-        return self.k * (self.k // 2)
-
-    @property
-    def edge_switch_count(self) -> int:
-        return self.k * (self.k // 2)
 
     def _init_core_switches(self) -> List[str]:
         core_switch_cnt = (self.k // 2) ** 2
         core_switches: List[str] = []
         for i in range(core_switch_cnt):
-            sw = self.addSwitch(f"c{i}", protocols="OpenFlow13", failMode="standalone")
+            sw = self.addSwitch(
+                f"core_{i}", protocols="OpenFlow13", failMode="standalone"
+            )
+            cmd = f"sudo ovs-vsctl set bridge {sw} protocols=OpenFlow13"
+            os.system(cmd)
             core_switches.append(sw)
 
         return core_switches
@@ -99,7 +84,7 @@ class FatTreeTopo(Topo):
         aggr_switches: List[str] = []
         for i in range(aggr_switch_per_pod):
             sw = self.addSwitch(
-                f"a{aggr_switch_index + i}",
+                f"aggr_{aggr_switch_index + i}",
                 protocols="OpenFlow13",
                 failMode="standalone",
             )
@@ -114,7 +99,7 @@ class FatTreeTopo(Topo):
         edge_switches: List[str] = []
         for i in range(self.k // 2):
             sw = self.addSwitch(
-                f"e{edge_switch_start_index + i}",
+                f"edge_{edge_switch_start_index + i}",
                 protocols="OpenFlow13",
                 failMode="standalone",
             )
@@ -126,7 +111,7 @@ class FatTreeTopo(Topo):
         host_start_index = pod_index * hosts_per_pod
         hosts: List[str] = []
         for i in range(hosts_per_pod):
-            host = self.addHost(f"h{host_start_index + i}")
+            host = self.addHost(f"host_{host_start_index + i}")
             hosts.append(host)
 
         return hosts
@@ -155,7 +140,7 @@ class FatTreeTopo(Topo):
                 core_index = i * (self.k // 2) + j
                 self.addLink(agg_sw, core_switches[core_index])
 
-    def _init_pods_and_hosts(self, core_switches: List[str]) -> None:
+    def _init_pods_and_hosts(self) -> None:
         for pod_index in range(self.k):
             info(f"Initializing pod: {pod_index}\n")
             # init aggregation switches for the current pod
@@ -177,75 +162,53 @@ class FatTreeTopo(Topo):
 
             self._connect_aggr_to_edge(edge_switches, aggr_switches)
 
-            self._connect_aggr_to_core(core_switches, aggr_switches)
+            self._connect_aggr_to_core(self.core_switches, aggr_switches)
 
     def build(self, k: int) -> None:
-        print("podd_countt: ", k)
         if k % 2 != 0:
             raise Exception("pod count must be an even number")
 
-        core_switches = self._init_core_switches()
+        self.core_switches = self._init_core_switches()
 
-        self._init_pods_and_hosts(core_switches)
+        self._init_pods_and_hosts()
 
+    @property
+    def radix(self):
+        return self.k
 
-def run_fat_tree_stp(k: int = 4) -> None:
-    info("*** Cleaning up any existing Mininet resources\n")
-    cleanup()
+    @property
+    def n_core(self) -> int:
+        return (self.k // 2) ** 2
 
-    topo = FatTreeTopo(k=k)
+    @property
+    def n_aggr(self) -> int:
+        return self.k * (self.k // 2)
 
-    remoteController = RemoteController("c0", ip="127.0.0.1", port=6633)
+    @property
+    def n_edge(self) -> int:
+        return self.k * (self.k // 2)
 
-    net = Mininet(
-        topo=topo,
-        switch=OVSKernelSwitch,
-        controller=remoteController,
-        link=TCLink,
-        waitConnected=False,
-    )
+    def add_clients(self, n_clients: int, dist: ConnectionDist) -> None:
+        assert n_clients > 0
+        assert isinstance(dist, ConnectionDist)
 
-    info("*** Starting network (this may take a moment)...\n")
-    net.start()
+        clients = []
+        for i in range(n_clients):
+            clients.append(self.addHost(f"client_{i}"))
 
-    info("*** Configuring STP on switches...\n")
-    for switch in net.switches:
-        # Set STP timeouts (in seconds)
-        switch.cmd("ovs-vsctl set bridge", switch, "other_config:stp-forward-delay=4")
-        switch.cmd("ovs-vsctl set bridge", switch, "other_config:stp-hello-time=1")
-        switch.cmd("ovs-vsctl set bridge", switch, "other_config:stp-max-age=6")
+        total = n_clients
+        bins = self.n_core
+        dist_arr = (
+            rand_dist_arr(total, bins)
+            if dist == ConnectionDist.RANDOM
+            else uniform_dist_arr(total, bins)
+        )
 
-    info("*** Waiting for STP to converge (10 seconds)...\n")
-    time.sleep(10)
+        assert len(dist_arr) == self.n_core
 
-    # Verify STP status on switches (just sample a few to avoid too much output)
-    info("*** STP Status (sample):\n")
-    # Just check a few switches
-    for switch in net.switches[:3]:
-        info(f"STP state for {switch.name}:\n")
-        result = switch.cmd("ovs-vsctl list bridge", switch.name, "| grep stp")
-        info(result + "\n")
-
-    info("\n*** Network is ready (STP may still be converging in background)\n")
-    info("*** If 'pingall' fails, wait 10-20 seconds and try again\n")
-
-    CLI(net)
-
-    net.stop()
-
-
-if __name__ == "__main__":
-    setLogLevel("info")
-
-    k: int = 4
-    if len(sys.argv) > 1:
-        try:
-            k = int(sys.argv[1])
-            if k % 2 != 0:
-                print("Error: k must be an even number")
-                sys.exit(1)
-        except ValueError:
-            print(f"Error: Invalid value for k: {sys.argv[1]}")
-            sys.exit(1)
-
-    run_fat_tree_stp(k)
+        client_index = 0
+        for core_index in range(self.n_core):
+            for _ in range(dist_arr[core_index]):
+                info(f"Connecting client: {client_index} to Core {core_index}\n")
+                self.addLink(clients[client_index], self.core_switches[core_index])
+                client_index += 1
